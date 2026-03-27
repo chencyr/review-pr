@@ -9,7 +9,7 @@
   - `SKILL.md` — Skill 入口點與流程定義
   - `prompts/review-checklist.md` — 五大面向分析指引
   - `prompts/comment-template.md` — PR Comment 格式模板
-  - `scripts/bb-*.sh` — Bitbucket API 操作腳本
+  - `scripts/bb-*.js` — Bitbucket API 操作腳本
 
 ## 環境需求
 
@@ -27,7 +27,6 @@
 
 ## 開發慣例
 
-- Shell scripts 使用 `set -euo pipefail`
-- API 回應解析使用 python3 inline script
+- Scripts 使用 JavaScript (Node.js)，以原生 fetch 呼叫 API
 - Comment 格式使用 Markdown (Bitbucket Cloud 支援)
 - 所有對外 API 操作 (comment, approve) 必須經用戶確認才執行
