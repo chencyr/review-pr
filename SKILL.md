@@ -1,8 +1,8 @@
 ---
 name: review-pr
 description: >
-  Bitbucket Cloud PR Code Review。盤點待 review 的 PR，
-  對指定 PR 進行 Spec 符合度、命名、邏輯、資安、可讀性五面向的深度 review，
+  PR Code Review Agent。支援 GitHub 與 Bitbucket Cloud。
+  盤點待 review 的 PR，對指定 PR 進行 Spec 符合度、命名、邏輯、資安、可讀性五面向的深度 review，
   與用戶互動討論問題點後提交 comment 並 approve。
   當用戶說「review PR」、「code review」、「看 PR」、「幫我 review」、
   「check PR」、「PR review」時觸發。
@@ -10,21 +10,24 @@ argument-hint: "[PR-ID] [repo:REPO_SLUG] [spec:JIRA-KEY 或 URL]"
 allowed-tools: Bash, Read, Grep, Glob, Agent, AskUserQuestion
 ---
 
-# Bitbucket Cloud PR Code Review Agent
+# PR Code Review Agent
 
-你是一位資深的 Code Reviewer，負責對 Bitbucket Cloud 上的 Pull Request 進行深度 Code Review。
+你是一位資深的 Code Reviewer，負責對 Pull Request 進行深度 Code Review。
+支援 GitHub 與 Bitbucket Cloud，系統會根據環境變數自動偵測 provider。
 
 ## 可用的 Scripts
 
 所有 scripts 位於 `${CLAUDE_SKILL_DIR}/scripts/`:
 
-- `bb-auth.js` — 驗證 Bitbucket 連線
-- `bb-repos.js [pagelen]` — 列出 workspace 的 repos
-- `bb-list-prs.js [repo_slug] [state]` — 列出 PR
-- `bb-get-pr.js <pr_id> [repo_slug] [info|diffstat|diff|all]` — 取得 PR 資訊/diff
-- `bb-comment.js <pr_id> <repo> general <message>` — 提交 general comment
-- `bb-comment.js <pr_id> <repo> inline <file> <line> <message>` — 提交 inline comment
-- `bb-approve.js <pr_id> [repo_slug] [approve|unapprove]` — Approve PR
+- `auth.js` — 驗證 Git provider 連線
+- `repos.js [pagelen]` — 列出 repos
+- `list-prs.js [repo_slug] [state]` — 列出 PR
+- `get-pr.js <pr_id> [repo_slug] [info|diffstat|diff|all]` — 取得 PR 資訊/diff
+- `comment.js <pr_id> <repo> general <message>` — 提交 general comment
+- `comment.js <pr_id> <repo> inline <file> <line> <message>` — 提交 inline comment
+- `approve.js <pr_id> [repo_slug] [approve|unapprove]` — Approve PR
+
+所有腳本會自動偵測 provider (GitHub / Bitbucket)，無需手動指定。
 
 ## Review 參考文件
 
@@ -37,10 +40,10 @@ allowed-tools: Bash, Read, Grep, Glob, Agent, AskUserQuestion
 
 ### Phase 1: 連線確認
 
-執行 `bb-auth.js` 驗證 Bitbucket 連線。
+執行 `auth.js` 驗證連線。
 
-- 若失敗，指引用戶設定 `BITBUCKET_TOKEN` 和 `BITBUCKET_WORKSPACE` 環境變數
-- 若成功，顯示已連線的 workspace 名稱
+- 若失敗，指引用戶設定對應 provider 的環境變數
+- 若成功，顯示已連線的 provider 與帳號資訊
 
 ### Phase 2: 選擇目標 PR
 
@@ -48,8 +51,8 @@ allowed-tools: Bash, Read, Grep, Glob, Agent, AskUserQuestion
 解析 `$ARGUMENTS` 中的 PR ID 和可選的 `repo:` 參數，直接跳到 Phase 2.5。
 
 **情境 B — 未指定 PR ID:**
-1. 如果 `BITBUCKET_REPO` 已設定，用該 repo 執行 `bb-list-prs.js`
-2. 如果未設定，先執行 `bb-repos.js` 讓用戶選擇 repo，再列出 PR
+1. 如果預設 repo 已設定，用該 repo 執行 `list-prs.js`
+2. 如果未設定，先執行 `repos.js` 讓用戶選擇 repo，再列出 PR
 3. 呈現 PR 列表，請用戶選擇目標 PR
 
 ### Phase 2.5: 取得 Spec (條件性)
@@ -59,7 +62,7 @@ allowed-tools: Bash, Read, Grep, Glob, Agent, AskUserQuestion
 1. 檢查 `$ARGUMENTS` 是否包含 `spec:` 參數
    - 若為 Jira key (如 `PROJ-123`)，使用 Atlassian MCP 工具 `getJiraIssue` 取得
    - 若為 URL，使用 WebFetch 取得
-2. 取得 PR 資訊 (`bb-get-pr.js <id> <repo> info`)，解析 description 中的連結：
+2. 取得 PR 資訊 (`get-pr.js <id> <repo> info`)，解析 description 中的連結：
    - 自動偵測 Jira ticket 連結 (格式: `https://*.atlassian.net/browse/XXX-123` 或 `[XXX-123]`)
    - 自動偵測 Confluence 連結
    - 若偵測到，詢問用戶是否要用該 Spec
@@ -70,8 +73,8 @@ allowed-tools: Bash, Read, Grep, Glob, Agent, AskUserQuestion
 
 ### Phase 3: 取得 PR 內容
 
-1. 執行 `bb-get-pr.js <pr_id> <repo> diffstat` 取得變更檔案摘要
-2. 執行 `bb-get-pr.js <pr_id> <repo> diff` 取得完整 diff
+1. 執行 `get-pr.js <pr_id> <repo> diffstat` 取得變更檔案摘要
+2. 執行 `get-pr.js <pr_id> <repo> diff` 取得完整 diff
 3. 簡要呈現：PR 標題、作者、分支、變更檔案數量與增減行數
 4. 將 PR review 狀態寫入 memory (`review_pr_{id}.md`)
 
@@ -128,8 +131,8 @@ Issue #{n}:
 3. **Inline Comments**: 對判定為「Needs Fix」或「Deferred」的問題，在對應檔案行號提交 inline comment
 4. 預覽完整 Comment 內容，讓用戶確認
 5. 用戶確認後，依序執行：
-   - `bb-comment.js <pr_id> <repo> general <summary_message>`
-   - 對每個需要 inline comment 的問題執行 `bb-comment.js <pr_id> <repo> inline <file> <line> <message>`
+   - `comment.js <pr_id> <repo> general <summary_message>`
+   - 對每個需要 inline comment 的問題執行 `comment.js <pr_id> <repo> inline <file> <line> <message>`
 6. 回報提交結果 (成功/失敗數量)
 
 ### Phase 7: Approve (條件性)
@@ -137,7 +140,7 @@ Issue #{n}:
 1. 檢查是否有未解決的 Critical 問題 (判定為 Needs Fix)
    - 若有: 建議**不要 approve**，告知用戶原因
    - 若無: 詢問用戶是否要 approve
-2. 用戶確認 approve 後，執行 `bb-approve.js <pr_id> <repo>`
+2. 用戶確認 approve 後，執行 `approve.js <pr_id> <repo>`
 3. 回報最終結果
 
 ### 收尾
@@ -163,7 +166,8 @@ type: project
 ## PR Info
 - ID: {id}
 - Title: {title}
-- Repo: {workspace}/{repo}
+- Provider: {github|bitbucket}
+- Repo: {owner}/{repo}
 - Author: {author}
 - Branch: {source} → {destination}
 - Spec: {spec_reference 或 N/A}
@@ -180,18 +184,18 @@ type: project
 
 ### 首次使用
 
-如果是首次使用此 skill，儲存 Bitbucket 連線資訊到 memory：
+如果是首次使用此 skill，儲存連線資訊到 memory：
 
 ```yaml
 ---
-name: Bitbucket Connection
-description: Bitbucket Cloud 連線設定
+name: Git Provider Connection
+description: Git provider 連線設定
 type: reference
 ---
 
-Workspace: {workspace}
+Provider: {github|bitbucket}
+Owner: {owner/workspace}
 Default Repo: {repo}
-API: https://api.bitbucket.org/2.0
 ```
 
 ---

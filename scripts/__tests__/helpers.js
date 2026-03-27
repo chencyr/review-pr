@@ -1,4 +1,4 @@
-// helpers.js — 測試用的 mock fetch 工廠
+// helpers.js — 測試用的 mock fetch 工廠與共用常數
 
 export function mockFetch(status, body, { ok = status >= 200 && status < 300 } = {}) {
   return async () => ({
@@ -9,8 +9,14 @@ export function mockFetch(status, body, { ok = status >= 200 && status < 300 } =
   });
 }
 
-export const BASE_OPTS = {
-  token: 'test-token',
-  workspace: 'test-ws',
+export const BB_OPTS = {
+  token: 'bb-test-token',
+  owner: 'test-ws',
+  repo: 'test-repo',
+};
+
+export const GH_OPTS = {
+  token: 'gh-test-token',
+  owner: 'test-org',
   repo: 'test-repo',
 };
