@@ -3,79 +3,81 @@
 // 用法: bb-get-pr.js <pr_id> [repo_slug] [info|diffstat|diff]
 
 const BB_API = 'https://api.bitbucket.org/2.0';
-const WORKSPACE = process.env.BITBUCKET_WORKSPACE;
-const TOKEN = process.env.BITBUCKET_TOKEN;
 
-if (!WORKSPACE || !TOKEN) {
-  console.error('ERROR: BITBUCKET_WORKSPACE 或 BITBUCKET_TOKEN 未設定');
-  process.exit(1);
-}
-
-const [prId, repo = process.env.BITBUCKET_REPO, mode = 'all'] = process.argv.slice(2);
-
-if (!prId) {
-  console.error('用法: bb-get-pr.js <pr_id> [repo_slug] [info|diffstat|diff]');
-  process.exit(1);
-}
-if (!repo) {
-  console.error('ERROR: 未指定 repository');
-  process.exit(1);
-}
-
-const base = `${BB_API}/repositories/${WORKSPACE}/${repo}/pullrequests/${prId}`;
-
-async function bb(url, accept = 'application/json') {
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${TOKEN}`, Accept: accept },
+async function bb(url, accept = 'application/json', { token, fetchFn }) {
+  const res = await fetchFn(url, {
+    headers: { Authorization: `Bearer ${token}`, Accept: accept },
     redirect: 'follow',
   });
   if (!res.ok) {
-    console.error(`ERROR: HTTP ${res.status} for ${url}`);
-    console.error(await res.text());
-    process.exit(1);
+    throw new Error(`HTTP ${res.status} for ${url}`);
   }
   return accept === 'application/json' ? res.json() : res.text();
 }
 
-// PR 基本資訊
-if (mode === 'all' || mode === 'info') {
-  console.log('=== PR INFO ===');
-  const pr = await bb(base);
-  console.log(`PR #${pr.id}: ${pr.title}`);
-  console.log(`State: ${pr.state}`);
-  console.log(`Author: ${pr.author.display_name}`);
-  console.log(`Source: ${pr.source.branch.name} → ${pr.destination.branch.name}`);
-  console.log('Description:');
-  console.log((pr.description || '(none)').slice(0, 2000));
-  console.log(`\nReviewers: ${(pr.reviewers || []).map(r => r.display_name).join(', ')}`);
-  console.log(`Created: ${pr.created_on.slice(0, 16)}`);
-  console.log(`Updated: ${pr.updated_on.slice(0, 16)}`);
-  console.log(`Link: ${pr.links.html.href}`);
-  if (mode === 'info') process.exit(0);
-}
+export async function run({ token, workspace, prId, repo, mode = 'all', fetchFn = fetch }) {
+  if (!token || !workspace) throw new Error('BITBUCKET_WORKSPACE 或 BITBUCKET_TOKEN 未設定');
+  if (!prId) throw new Error('用法: bb-get-pr.js <pr_id> [repo_slug] [info|diffstat|diff]');
+  if (!repo) throw new Error('未指定 repository');
 
-// Diffstat
-if (mode === 'all' || mode === 'diffstat') {
-  console.log('\n=== DIFFSTAT ===');
-  const data = await bb(`${base}/diffstat`);
-  const files = data.values || [];
-  const symbols = { added: 'A', removed: 'D', modified: 'M', renamed: 'R' };
-  let totalAdd = 0, totalDel = 0;
-  for (const f of files) {
-    const added = f.lines_added || 0;
-    const removed = f.lines_removed || 0;
-    totalAdd += added;
-    totalDel += removed;
-    const path = f.new?.path || f.old?.path || '';
-    const sym = symbols[f.status] || '?';
-    console.log(`  [${sym}] ${path.padEnd(60)} +${String(added).padEnd(5)} -${removed}`);
+  const base = `${BB_API}/repositories/${workspace}/${repo}/pullrequests/${prId}`;
+  const ctx = { token, fetchFn };
+  const lines = [];
+
+  if (mode === 'all' || mode === 'info') {
+    lines.push('=== PR INFO ===');
+    const pr = await bb(base, 'application/json', ctx);
+    lines.push(`PR #${pr.id}: ${pr.title}`);
+    lines.push(`State: ${pr.state}`);
+    lines.push(`Author: ${pr.author.display_name}`);
+    lines.push(`Source: ${pr.source.branch.name} → ${pr.destination.branch.name}`);
+    lines.push('Description:');
+    lines.push((pr.description || '(none)').slice(0, 2000));
+    lines.push(`\nReviewers: ${(pr.reviewers || []).map(r => r.display_name).join(', ')}`);
+    lines.push(`Created: ${pr.created_on.slice(0, 16)}`);
+    lines.push(`Updated: ${pr.updated_on.slice(0, 16)}`);
+    lines.push(`Link: ${pr.links.html.href}`);
+    if (mode === 'info') return { ok: true, message: lines.join('\n') };
   }
-  console.log(`\nTotal: ${files.length} files, +${totalAdd} -${totalDel}`);
-  if (mode === 'diffstat') process.exit(0);
+
+  if (mode === 'all' || mode === 'diffstat') {
+    lines.push('\n=== DIFFSTAT ===');
+    const data = await bb(`${base}/diffstat`, 'application/json', ctx);
+    const files = data.values || [];
+    const symbols = { added: 'A', removed: 'D', modified: 'M', renamed: 'R' };
+    let totalAdd = 0, totalDel = 0;
+    for (const f of files) {
+      const added = f.lines_added || 0;
+      const removed = f.lines_removed || 0;
+      totalAdd += added;
+      totalDel += removed;
+      const path = f.new?.path || f.old?.path || '';
+      const sym = symbols[f.status] || '?';
+      lines.push(`  [${sym}] ${path.padEnd(60)} +${String(added).padEnd(5)} -${removed}`);
+    }
+    lines.push(`\nTotal: ${files.length} files, +${totalAdd} -${totalDel}`);
+    if (mode === 'diffstat') return { ok: true, message: lines.join('\n') };
+  }
+
+  if (mode === 'all' || mode === 'diff') {
+    lines.push('\n=== DIFF ===');
+    lines.push(await bb(`${base}/diff`, 'text/plain', ctx));
+  }
+
+  return { ok: true, message: lines.join('\n') };
 }
 
-// Unified diff
-if (mode === 'all' || mode === 'diff') {
-  console.log('\n=== DIFF ===');
-  console.log(await bb(`${base}/diff`, 'text/plain'));
+if (import.meta.url === `file://${process.argv[1]}`) {
+  try {
+    const [prId, repo = process.env.BITBUCKET_REPO, mode = 'all'] = process.argv.slice(2);
+    const result = await run({
+      token: process.env.BITBUCKET_TOKEN,
+      workspace: process.env.BITBUCKET_WORKSPACE,
+      prId, repo, mode,
+    });
+    console.log(result.message);
+  } catch (e) {
+    console.error(`ERROR: ${e.message}`);
+    process.exit(1);
+  }
 }

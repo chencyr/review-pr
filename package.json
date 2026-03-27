@@ -1,0 +1,8 @@
+{
+  "name": "review-pr",
+  "type": "module",
+  "scripts": {
+    "test": "node --test scripts/__tests__/bb-*.test.js",
+    "test:integration": "node --test scripts/__tests__/integration.test.js"
+  }
+}
