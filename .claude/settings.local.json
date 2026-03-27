@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:developer.atlassian.com)",
+      "Bash(chmod +x /Users/rexchen/Projects/bitbucket-code-review/.claude/skills/review-pr/scripts/*.sh)"
+    ]
+  }
+}
