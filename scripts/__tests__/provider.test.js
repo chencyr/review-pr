@@ -1,6 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { detect } from '../provider.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { detect, loadDotEnv } from '../provider.js';
 
 describe('provider detection', () => {
   it('應在設定 GITHUB_TOKEN 時偵測為 GitHub', () => {
@@ -35,5 +38,27 @@ describe('provider detection', () => {
     assert.equal(typeof p.getPr, 'function');
     assert.equal(typeof p.comment, 'function');
     assert.equal(typeof p.approve, 'function');
+  });
+
+  it('應可從 .env 檔案載入 provider 設定', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'review-pr-env-'));
+    const envPath = path.join(tempDir, '.env');
+
+    fs.writeFileSync(
+      envPath,
+      [
+        '# comment',
+        'BITBUCKET_TOKEN=bb_from_file',
+        'BITBUCKET_WORKSPACE="workspace-from-file"',
+        'BITBUCKET_REPO=repo-from-file',
+      ].join('\n'),
+    );
+
+    const loaded = loadDotEnv(envPath);
+    assert.deepEqual(loaded, {
+      BITBUCKET_TOKEN: 'bb_from_file',
+      BITBUCKET_WORKSPACE: 'workspace-from-file',
+      BITBUCKET_REPO: 'repo-from-file',
+    });
   });
 });
